@@ -2072,6 +2072,89 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         </div>
       )}
 
+      {/* Commitment Move Scope Modal */}
+      {pendingCommitmentMove && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-800 dark:text-white">Update Commitment</h2>
+                <button onClick={() => setPendingCommitmentMove(null)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="text-sm text-gray-700 dark:text-gray-300 space-y-2 mb-4">
+                <div><strong>{pendingCommitmentMove.commitment.title}</strong></div>
+                <div>
+                  Move to {moment(pendingCommitmentMove.targetDate).format('ddd, MMM D')} {pendingCommitmentMove.newStartTime} - {pendingCommitmentMove.newEndTime}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <button
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  onClick={() => {
+                    const { commitment, targetDate, newStartTime, newEndTime } = pendingCommitmentMove;
+                    const updated = {
+                      ...commitment.modifiedOccurrences,
+                      [targetDate]: {
+                        startTime: newStartTime,
+                        endTime: newEndTime,
+                        title: commitment.title,
+                        category: commitment.category,
+                        isAllDay: false,
+                      }
+                    } as NonNullable<FixedCommitment['modifiedOccurrences']>;
+                    onUpdateCommitment && onUpdateCommitment(commitment.id, { modifiedOccurrences: updated });
+                    setPendingCommitmentMove(null);
+                  }}
+                >
+                  Only this block
+                </button>
+                <button
+                  className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                  onClick={() => {
+                    const { commitment, newStartTime, dayOfWeek } = pendingCommitmentMove;
+                    // Update all similar occurrences
+                    if (commitment.recurring) {
+                      if (commitment.useDaySpecificTiming && commitment.daySpecificTimings) {
+                        const current = commitment.daySpecificTimings.find(t => t.dayOfWeek === dayOfWeek);
+                        const curDur = current && !current.isAllDay && current.startTime && current.endTime
+                          ? toMinutes(current.endTime) - toMinutes(current.startTime)
+                          : (commitment.startTime && commitment.endTime ? toMinutes(commitment.endTime) - toMinutes(commitment.startTime) : pendingCommitmentMove.durationMinutes);
+                        const nextEnd = minutesToTime(toMinutes(newStartTime) + curDur);
+                        const updatedTimings = commitment.daySpecificTimings.map(t => t.dayOfWeek === dayOfWeek
+                          ? { ...t, isAllDay: false, startTime: newStartTime, endTime: nextEnd }
+                          : t
+                        );
+                        onUpdateCommitment && onUpdateCommitment(commitment.id, { daySpecificTimings: updatedTimings });
+                      } else {
+                        const baseDur = commitment.startTime && commitment.endTime ? toMinutes(commitment.endTime) - toMinutes(commitment.startTime) : pendingCommitmentMove.durationMinutes;
+                        const nextEnd = minutesToTime(toMinutes(newStartTime) + baseDur);
+                        onUpdateCommitment && onUpdateCommitment(commitment.id, { startTime: newStartTime, endTime: nextEnd });
+                      }
+                    } else {
+                      // Non-recurring with multiple dates: set base time for all
+                      const baseDur = commitment.startTime && commitment.endTime ? toMinutes(commitment.endTime) - toMinutes(commitment.startTime) : pendingCommitmentMove.durationMinutes;
+                      const nextEnd = minutesToTime(toMinutes(newStartTime) + baseDur);
+                      onUpdateCommitment && onUpdateCommitment(commitment.id, { startTime: newStartTime, endTime: nextEnd });
+                    }
+                    setPendingCommitmentMove(null);
+                  }}
+                >
+                  All similar
+                </button>
+                <button
+                  className="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                  onClick={() => setPendingCommitmentMove(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Info Modal for Drag & Drop */}
       {showInfoModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
