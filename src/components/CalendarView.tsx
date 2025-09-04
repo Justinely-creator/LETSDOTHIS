@@ -1170,7 +1170,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         } else if (categoryLower.includes('home') || categoryLower.includes('house') || categoryLower.includes('family')) {
           return '🏠';
         } else if (categoryLower.includes('personal') || categoryLower.includes('life')) {
-          return '👤';
+          return '��';
         } else {
           return '📋'; // Default for unknown categories
         }
@@ -1708,10 +1708,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             draggableAccessor={(event: any) => {
               const calendarEvent = event as CalendarEvent;
 
-              // Allow dragging of commitments that count toward daily hours
+              // Allow dragging of commitments except all-day ones
               if (calendarEvent.resource.type === 'commitment') {
                 const commitment = calendarEvent.resource.data as FixedCommitment;
-                return commitment.countsTowardDailyHours || false;
+                return !commitment.isAllDay;
               }
 
               // Allow dragging of study sessions
