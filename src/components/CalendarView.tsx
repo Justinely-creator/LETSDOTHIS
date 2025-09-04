@@ -2109,7 +2109,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                   onClick={() => {
                     const { commitment, newStartTime, dayOfWeek } = pendingCommitmentMove;
-                    // Update all similar occurrences
+                    // Update all similar occurrences uniformly
                     if (commitment.recurring) {
                       if (commitment.useDaySpecificTiming && commitment.daySpecificTimings) {
                         const current = commitment.daySpecificTimings.find(t => t.dayOfWeek === dayOfWeek);
@@ -2121,17 +2121,22 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                           ? { ...t, isAllDay: false, startTime: newStartTime, endTime: nextEnd }
                           : t
                         );
-                        onUpdateCommitment && onUpdateCommitment(commitment.id, { daySpecificTimings: updatedTimings });
+                        // Clear modified occurrences for this weekday to enforce uniform times
+                        const cleanedMods = Object.fromEntries(
+                          Object.entries(commitment.modifiedOccurrences || {}).filter(([date]) => new Date(date).getDay() !== dayOfWeek)
+                        );
+                        onUpdateCommitment && onUpdateCommitment(commitment.id, { daySpecificTimings: updatedTimings, modifiedOccurrences: cleanedMods });
                       } else {
                         const baseDur = commitment.startTime && commitment.endTime ? toMinutes(commitment.endTime) - toMinutes(commitment.startTime) : pendingCommitmentMove.durationMinutes;
                         const nextEnd = minutesToTime(toMinutes(newStartTime) + baseDur);
-                        onUpdateCommitment && onUpdateCommitment(commitment.id, { startTime: newStartTime, endTime: nextEnd });
+                        // Update base times and clear all modified occurrences so all dates align
+                        onUpdateCommitment && onUpdateCommitment(commitment.id, { startTime: newStartTime, endTime: nextEnd, modifiedOccurrences: {} });
                       }
                     } else {
-                      // Non-recurring with multiple dates: set base time for all
+                      // Non-recurring with multiple dates: set base time for all and clear overrides
                       const baseDur = commitment.startTime && commitment.endTime ? toMinutes(commitment.endTime) - toMinutes(commitment.startTime) : pendingCommitmentMove.durationMinutes;
                       const nextEnd = minutesToTime(toMinutes(newStartTime) + baseDur);
-                      onUpdateCommitment && onUpdateCommitment(commitment.id, { startTime: newStartTime, endTime: nextEnd });
+                      onUpdateCommitment && onUpdateCommitment(commitment.id, { startTime: newStartTime, endTime: nextEnd, modifiedOccurrences: {} });
                     }
                     setPendingCommitmentMove(null);
                   }}
