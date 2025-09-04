@@ -698,6 +698,125 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     return null;
   };
 
+  const toMinutes = (timeStr: string) => {
+    const [h, m] = timeStr.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  const minutesToTime = (mins: number) => {
+    const m = ((mins % (24 * 60)) + (24 * 60)) % (24 * 60);
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  };
+
+  // Find nearest available slot for a commitment move, avoiding overlaps with study sessions and other commitments
+  const findNearestAvailableSlotForCommitment = (
+    targetStart: Date,
+    durationHours: number,
+    targetDate: string,
+    movingCommitment: FixedCommitment
+  ): { start: Date; end: Date } | null => {
+    if (!settings) return null;
+
+    const bufferTimeMs = (settings.bufferTimeBetweenSessions || 0) * 60 * 1000;
+
+    // Gather busy slots on target date (study sessions + other commitments except the moving instance)
+    const busy: Array<{ start: Date; end: Date }> = [];
+
+    // Study sessions
+    studyPlans.forEach(plan => {
+      if (plan.date !== targetDate) return;
+      plan.plannedTasks.forEach(session => {
+        if (session.status === 'skipped' || !session.startTime || !session.endTime) return;
+        const s = moment(`${targetDate} ${session.startTime}`).toDate();
+        const e = moment(`${targetDate} ${session.endTime}`).toDate();
+        busy.push({ start: s, end: e });
+      });
+    });
+
+    // Commitments
+    fixedCommitments.forEach(c => {
+      if (!doesCommitmentApplyToDate(c, targetDate)) return;
+      // Skip the moving commitment on this date (avoid self-conflict)
+      if (c.id === movingCommitment.id) return;
+
+      // Determine actual times on this date
+      const mod = c.modifiedOccurrences?.[targetDate];
+      const isAllDay = mod?.isAllDay ?? c.isAllDay;
+      if (isAllDay) {
+        // Block entire day
+        const dayStart = moment(`${targetDate} 00:00`).toDate();
+        const dayEnd = moment(`${targetDate} 23:59`).toDate();
+        busy.push({ start: dayStart, end: dayEnd });
+        return;
+      }
+      let startStr: string | undefined;
+      let endStr: string | undefined;
+      if (mod?.startTime && mod?.endTime) {
+        startStr = mod.startTime;
+        endStr = mod.endTime;
+      } else if (c.useDaySpecificTiming && c.daySpecificTimings) {
+        const dow = new Date(targetDate).getDay();
+        const t = c.daySpecificTimings.find(t => t.dayOfWeek === dow);
+        if (t && !t.isAllDay) {
+          startStr = t.startTime;
+          endStr = t.endTime;
+        }
+      } else {
+        startStr = c.startTime;
+        endStr = c.endTime;
+      }
+      if (startStr && endStr) {
+        const s = moment(`${targetDate} ${startStr}`).toDate();
+        const e = moment(`${targetDate} ${endStr}`).toDate();
+        busy.push({ start: s, end: e });
+      }
+    });
+
+    busy.sort((a, b) => a.start.getTime() - b.start.getTime());
+
+    // Boundaries using effective study window
+    const window = getDaySpecificDailyHours ? null : null; // placeholder to satisfy TS reference
+    const startHour = settings.studyWindowStartHour || 6;
+    const endHour = settings.studyWindowEndHour || 23;
+    const dayStart = moment(targetDate).hour(startHour).minute(0).second(0).toDate();
+    const dayEnd = moment(targetDate).hour(endHour).minute(0).second(0).toDate();
+
+    const durMs = durationHours * 60 * 60 * 1000;
+
+    const isValid = (s: Date, e: Date) => {
+      if (s < dayStart || e > dayEnd) return false;
+      for (const b of busy) {
+        const adjS = new Date(s.getTime() - bufferTimeMs);
+        const adjE = new Date(e.getTime() + bufferTimeMs);
+        if (adjS < b.end && adjE > b.start) return false;
+      }
+      return true;
+    };
+
+    const SNAP = timeInterval * 60 * 1000;
+
+    // Try exact
+    const exactEnd = new Date(targetStart.getTime() + durMs);
+    if (isValid(targetStart, exactEnd)) return { start: targetStart, end: exactEnd };
+
+    // Try snapped
+    const rounded = new Date(Math.round(targetStart.getTime() / SNAP) * SNAP);
+    const roundedEnd = new Date(rounded.getTime() + durMs);
+    if (isValid(rounded, roundedEnd)) return { start: rounded, end: roundedEnd };
+
+    // Search nearby windows
+    const maxSearch = 6 * 60 * 60 * 1000;
+    for (let off = SNAP; off <= maxSearch; off += SNAP) {
+      for (const dir of [1, -1]) {
+        const s = new Date(rounded.getTime() + dir * off);
+        const e = new Date(s.getTime() + durMs);
+        if (isValid(s, e)) return { start: s, end: e };
+      }
+    }
+    return null;
+  };
+
   // Handle drag start
   const handleDragStart = (event: any) => {
     setIsDragging(true);
