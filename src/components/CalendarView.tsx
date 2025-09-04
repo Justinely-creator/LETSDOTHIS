@@ -776,7 +776,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     busy.sort((a, b) => a.start.getTime() - b.start.getTime());
 
     // Boundaries using effective study window
-    const window = getDaySpecificDailyHours ? null : null; // placeholder to satisfy TS reference
     const startHour = settings.studyWindowStartHour || 6;
     const endHour = settings.studyWindowEndHour || 23;
     const dayStart = moment(targetDate).hour(startHour).minute(0).second(0).toDate();
