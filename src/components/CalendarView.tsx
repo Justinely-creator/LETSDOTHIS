@@ -836,13 +836,16 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     if (event.resource.type === 'commitment') {
       const commitment = event.resource.data as FixedCommitment;
 
-      // Only allow dragging commitments that count toward daily hours
       if (!commitment.countsTowardDailyHours) {
         setDragFeedback('Only productive commitments can be moved');
         setTimeout(() => setDragFeedback(''), 3000);
         return;
       }
-
+      if (commitment.isAllDay) {
+        setDragFeedback('All-day commitments cannot be moved');
+        setTimeout(() => setDragFeedback(''), 3000);
+        return;
+      }
       if (!onUpdateCommitment) {
         setDragFeedback('Commitment updates not available');
         setTimeout(() => setDragFeedback(''), 3000);
@@ -850,78 +853,36 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       }
 
       const targetDate = moment(start).format('YYYY-MM-DD');
-      const newStartTime = moment(start).format('HH:mm');
-      const newEndTime = moment(end).format('HH:mm');
-      const dayOfWeek = moment(start).day();
+      const originalDate = moment(event.start).format('YYYY-MM-DD');
+      const durationMinutes = Math.max(5, Math.round(moment(end).diff(moment(start), 'minutes')));
+      const durationHours = durationMinutes / 60;
 
-      // For recurring commitments with day-specific timing, only modify this specific date
-      if (commitment.recurring && commitment.useDaySpecificTiming) {
-        // Create a modified occurrence for this specific date only - don't change future days
-        const updatedModifiedOccurrences = {
-          ...commitment.modifiedOccurrences,
-          [targetDate]: {
-            startTime: newStartTime,
-            endTime: newEndTime,
-            title: commitment.title,
-            category: commitment.category,
-            isAllDay: false
-          }
-        };
-
-        onUpdateCommitment(commitment.id, {
-          modifiedOccurrences: updatedModifiedOccurrences
-        });
-
-        setDragFeedback(`✅ Commitment moved to ${newStartTime} - ${newEndTime} on ${moment(targetDate).format('MMM D')} only`);
+      const slot = findNearestAvailableSlotForCommitment(start, durationHours, targetDate, commitment);
+      if (!slot) {
+        setDragFeedback('No available time slot found for this commitment');
         setTimeout(() => setDragFeedback(''), 3000);
         return;
       }
 
-      // For one-time commitments, create a modified occurrence instead of updating base times
-      if (!commitment.recurring && commitment.specificDates?.includes(targetDate)) {
-        const updatedModifiedOccurrences = {
-          ...commitment.modifiedOccurrences,
-          [targetDate]: {
-            startTime: newStartTime,
-            endTime: newEndTime,
-            title: commitment.title,
-            category: commitment.category,
-            isAllDay: false
-          }
-        };
+      const finalStart = moment(slot.start).format('HH:mm');
+      const finalEnd = moment(slot.end).format('HH:mm');
+      const dow = moment(slot.start).day();
 
-        onUpdateCommitment(commitment.id, {
-          modifiedOccurrences: updatedModifiedOccurrences
-        });
+      setPendingCommitmentMove({
+        commitment,
+        targetDate,
+        newStartTime: finalStart,
+        newEndTime: finalEnd,
+        originalDate,
+        dayOfWeek: dow,
+        durationMinutes
+      });
 
-        setDragFeedback(`✅ Commitment moved to ${newStartTime} - ${newEndTime} on ${moment(targetDate).format('MMM D')}`);
-        setTimeout(() => setDragFeedback(''), 3000);
-        return;
-      }
-
-      // For recurring commitments without day-specific timing, create a modified occurrence for this specific date
-      if (commitment.recurring) {
-        const updatedModifiedOccurrences = {
-          ...commitment.modifiedOccurrences,
-          [targetDate]: {
-            startTime: newStartTime,
-            endTime: newEndTime,
-            title: commitment.title,
-            category: commitment.category,
-            isAllDay: false
-          }
-        };
-
-        onUpdateCommitment(commitment.id, {
-          modifiedOccurrences: updatedModifiedOccurrences
-        });
-
-        setDragFeedback(`✅ Commitment moved to ${newStartTime} - ${newEndTime} on ${moment(targetDate).format('MMM D')}`);
-        setTimeout(() => setDragFeedback(''), 3000);
-        return;
-      }
-
-      setDragFeedback('Unable to update this commitment type');
+      // Feedback about placement precision
+      const diffMin = Math.abs(moment(slot.start).diff(moment(start), 'minutes'));
+      if (diffMin === 0) setDragFeedback(`✅ Placed at ${finalStart}`);
+      else if (diffMin <= 15) setDragFeedback(`📍 Placed at ${finalStart} (${diffMin}m from target)`);
+      else setDragFeedback(`🔄 Moved to ${finalStart} (nearest available)`);
       setTimeout(() => setDragFeedback(''), 3000);
       return;
     }
