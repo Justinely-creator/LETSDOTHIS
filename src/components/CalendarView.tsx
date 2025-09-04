@@ -836,11 +836,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     if (event.resource.type === 'commitment') {
       const commitment = event.resource.data as FixedCommitment;
 
-      if (!commitment.countsTowardDailyHours) {
-        setDragFeedback('Only productive commitments can be moved');
-        setTimeout(() => setDragFeedback(''), 3000);
-        return;
-      }
       if (commitment.isAllDay) {
         setDragFeedback('All-day commitments cannot be moved');
         setTimeout(() => setDragFeedback(''), 3000);
